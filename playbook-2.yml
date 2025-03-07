@@ -42,3 +42,106 @@
               def do_GET(self):
                   self.send_response(200)
                   self.send_header("Content-type", "text/plain")
+                  self.end_headers()
+                  self.wfile.write(b"Hello from Server 2")
+          if __name__ == "__main__":
+              with HTTPServer((host, port), CustomHandler) as server:
+                  server.serve_forever()
+
+    - name: Deploy server3.py
+      copy:
+        dest: /opt/python_servers/server3.py
+        content: |
+          from http.server import SimpleHTTPRequestHandler, HTTPServer
+          host = "0.0.0.0"
+          port = 8083
+          class CustomHandler(SimpleHTTPRequestHandler):
+              def do_GET(self):
+                  self.send_response(200)
+                  self.send_header("Content-type", "text/plain")
+                  self.end_headers()
+                  self.wfile.write(b"Hello from Server 3")
+          if __name__ == "__main__":
+              with HTTPServer((host, port), CustomHandler) as server:
+                  server.serve_forever()
+
+    - name: Create systemd units for python servers
+      copy:
+        dest: /etc/systemd/system/{{ item.name }}.service
+        content: |
+          [Unit]
+          Description={{ item.desc }}
+          After=network.target
+
+          [Service]
+          ExecStart=/usr/bin/python3 /opt/python_servers/{{ item.script }}
+          Restart=always
+
+          [Install]
+          WantedBy=multi-user.target
+        owner: root
+        group: root
+        mode: "0644"
+      loop:
+        - {
+            name: "python_server1",
+            script: "server1.py",
+            desc: "Python Server 1",
+          }
+        - {
+            name: "python_server2",
+            script: "server2.py",
+            desc: "Python Server 2",
+          }
+        - {
+            name: "python_server3",
+            script: "server3.py",
+            desc: "Python Server 3",
+          }
+
+    - name: Reload systemd and enable python servers
+      systemd:
+        name: "{{ item }}"
+        state: started
+        enabled: true
+      loop:
+        - python_server1
+        - python_server2
+        - python_server3
+
+    - name: Configure HAProxy (Weighted Round Robin L7)
+      copy:
+        dest: /etc/haproxy/haproxy.cfg
+        content: |
+          global
+              log stdout format raw local0
+              daemon
+
+          defaults
+              timeout connect 5s
+              timeout client  50s
+              timeout server  50s
+
+          frontend fe_http
+              bind *:80
+              mode http
+              acl host_example hdr(host) -i example.local
+              use_backend be_http if host_example
+              default_backend be_reject
+
+          backend be_http
+              mode http
+              balance roundrobin
+              option httpchk GET /
+              server server1 127.0.0.1:8081 check weight 2
+              server server2 127.0.0.1:8082 check weight 3
+              server server3 127.0.0.1:8083 check weight 4
+
+          backend be_reject
+              mode http
+              http-request deny
+
+    - name: Restart HAProxy
+      systemd:
+        name: haproxy
+        state: restarted
