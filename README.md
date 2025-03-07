@@ -20,4 +20,3 @@
 [Playbook 2](https://github.com/hovhannisyan-code/cluster/blob/master/playbook-2.yml)
 ![Result 2](https://github.com/hovhannisyan-code/cluster/blob/master/img/screenshot_1.png)
 ![Result 3](https://github.com/hovhannisyan-code/cluster/blob/master/img/screenshot_2.png)
-![Result 4](https://github.com/hovhannisyan-code/cluster/blob/master/img/screenshot_3.png)
