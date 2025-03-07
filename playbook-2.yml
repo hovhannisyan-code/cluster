@@ -123,8 +123,8 @@
               timeout server  50s
 
           frontend fe_http
-              bind *:80
               mode http
+              bind *:80
               acl host_example hdr(host) -i example.local
               use_backend be_http if host_example
               default_backend be_reject
