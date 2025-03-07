@@ -1,0 +1,44 @@
+- hosts: all
+  become: true
+  tasks:
+    - name: Install required packages
+      apt:
+        name:
+          - python3
+          - python3-pip
+          - haproxy
+        update_cache: true
+
+    - name: Create directory for python servers
+      file:
+        path: /opt/python_servers
+        state: directory
+
+    - name: Deploy server1.py
+      copy:
+        dest: /opt/python_servers/server1.py
+        content: |
+          from http.server import SimpleHTTPRequestHandler, HTTPServer
+          host = "0.0.0.0"
+          port = 8081
+          class CustomHandler(SimpleHTTPRequestHandler):
+              def do_GET(self):
+                  self.send_response(200)
+                  self.send_header("Content-type", "text/plain")
+                  self.end_headers()
+                  self.wfile.write(b"Hello from Server 1")
+          if __name__ == "__main__":
+              with HTTPServer((host, port), CustomHandler) as server:
+                  server.serve_forever()
+
+    - name: Deploy server2.py
+      copy:
+        dest: /opt/python_servers/server2.py
+        content: |
+          from http.server import SimpleHTTPRequestHandler, HTTPServer
+          host = "0.0.0.0"
+          port = 8082
+          class CustomHandler(SimpleHTTPRequestHandler):
+              def do_GET(self):
+                  self.send_response(200)
+                  self.send_header("Content-type", "text/plain")

@@ -1,0 +1,123 @@
+- hosts: all
+  become: true
+  tasks:
+    - name: Install required packages
+      apt:
+        name:
+          - python3
+          - python3-pip
+          - haproxy
+        update_cache: true
+
+    - name: Create directory for python servers
+      file:
+        path: /opt/python_servers
+        state: directory
+
+    - name: Deploy server1.py
+      copy:
+        dest: /opt/python_servers/server1.py
+        content: |
+          from http.server import SimpleHTTPRequestHandler, HTTPServer
+
+          host = "0.0.0.0"
+          port = 8081
+
+          class CustomHandler(SimpleHTTPRequestHandler):
+              def do_GET(self):
+                  self.send_response(200)
+                  self.send_header("Content-type", "text/plain")
+                  self.end_headers()
+                  self.wfile.write(b"Hello from Server 1")
+
+          if __name__ == "__main__":
+              with HTTPServer((host, port), CustomHandler) as server:
+                  print(f"Server 1 running on port {port}")
+                  server.serve_forever()
+
+    - name: Deploy server2.py
+      copy:
+        dest: /opt/python_servers/server2.py
+        content: |
+          from http.server import SimpleHTTPRequestHandler, HTTPServer
+
+          host = "0.0.0.0"
+          port = 8082
+
+          class CustomHandler(SimpleHTTPRequestHandler):
+              def do_GET(self):
+                  self.send_response(200)
+                  self.send_header("Content-type", "text/plain")
+                  self.end_headers()
+                  self.wfile.write(b"Hello from Server 2")
+
+          if __name__ == "__main__":
+              with HTTPServer((host, port), CustomHandler) as server:
+                  print(f"Server 2 running on port {port}")
+                  server.serve_forever()
+
+    - name: Create systemd units for python servers
+      copy:
+        dest: /etc/systemd/system/{{ item.name }}.service
+        content: |
+          [Unit]
+          Description={{ item.desc }}
+          After=network.target
+
+          [Service]
+          ExecStart=/usr/bin/python3 /opt/python_servers/{{ item.script }}
+          Restart=always
+
+          [Install]
+          WantedBy=multi-user.target
+        owner: root
+        group: root
+        mode: "0644"
+      loop:
+        - {
+            name: "python_server1",
+            script: "server1.py",
+            desc: "Python Server 1",
+          }
+        - {
+            name: "python_server2",
+            script: "server2.py",
+            desc: "Python Server 2",
+          }
+
+    - name: Reload systemd and enable python servers
+      systemd:
+        name: "{{ item }}"
+        state: started
+        enabled: true
+      loop:
+        - python_server1
+        - python_server2
+
+    - name: Configure HAProxy (Round Robin L4)
+      copy:
+        dest: /etc/haproxy/haproxy.cfg
+        content: |
+          global
+              log stdout format raw local0
+              daemon
+
+          defaults
+              log global
+              timeout connect 5s
+              timeout client  50s
+              timeout server  50s
+
+          frontend fe_http
+              bind *:80
+              default_backend be_http
+
+          backend be_http
+              balance roundrobin
+              server server1 127.0.0.1:8081 check
+              server server2 127.0.0.1:8082 check
+
+    - name: Restart HAProxy
+      systemd:
+        name: haproxy
+        state: restarted
